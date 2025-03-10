@@ -62,7 +62,7 @@ jobs:
           echo "changed_files=$changed_files" >> $GITHUB_ENV
 
       - name: Run Docker Compose
-        run: docker-compose up --build --detach
+        run: docker compose up --build --detach
         
       - name: Set safe.directory in docAider container
         run: docker exec docAider git config --global --add safe.directory /workspace
