@@ -1,0 +1,79 @@
+trigger: none
+pr:
+  branches:
+    include:
+      - '*'
+
+jobs:
+- job: UpdateDocumentation
+  displayName: 'Update Documentation on PR'
+  pool:
+    vmImage: 'ubuntu-latest'
+
+  steps:
+    - checkout: self
+      persistCredentials: true
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.10'
+      displayName: 'Set up Python'
+
+    - script: |
+        echo "Loading environment variables from .env file..."
+
+        if [ -f .env ]; then
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            # Ignore comments and empty lines
+            if [[ ! "$line" =~ ^# && ! -z "$line" ]]; then
+              echo "Setting: $line"
+              echo "$line" >> $GITHUB_ENV  # Use Azure DevOps environment vars
+            fi
+          done < .env
+          echo "Environment variables loaded."
+        else
+          echo "Error: .env file not found."
+          exit 1
+        fi
+      displayName: 'Load environment variables from .env'
+
+    - script: |
+        git fetch origin main
+        git checkout main
+        git fetch origin $(System.PullRequest.SourceBranch)
+        git checkout $(System.PullRequest.SourceBranch)
+      displayName: 'Fetch branches'
+
+    - script: |
+        changed_files=$(git diff --name-only main...$(System.PullRequest.SourceBranch) | tr '\n' ' ')
+        echo "##vso[task.setvariable variable=CHANGED_FILES]$changed_files"
+      displayName: 'Get changed files'
+
+    - script: |
+        docker compose up --build --detach
+      displayName: 'Run Docker Compose'
+
+    - script: |
+        docker exec docAider git config --global --add safe.directory /workspace
+      displayName: 'Set safe.directory in docAider container'
+
+    - script: |
+        - script: |
+        BRANCH_NAME=$(System.PullRequest.SourceBranch)
+        BRANCH_NAME=${BRANCH_NAME#refs/heads/}  # Verwijdert "refs/heads/" prefix
+        echo "Using branch: $BRANCH_NAME"
+        docker exec docAider python3 /docAider/repo_documentation/update_app.py --branch "$BRANCH_NAME"
+      displayName: 'Run DocAider Update Script'
+
+
+
+    - script: |
+        git config --local user.email "max.vandewalle@inetum-realdolmen.world"
+        git config --local user.name "Max Vandewalle"
+        git add .
+        if [ -n "$(CHANGED_FILES)" ]; then
+          git commit -m "Documentation Updated for $(CHANGED_FILES)"
+          git pull --rebase
+          git push
+        fi
+      displayName: 'Commit and push changes'

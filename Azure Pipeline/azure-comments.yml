@@ -1,0 +1,55 @@
+trigger: none
+
+jobs:
+- job: PRCommentDocsUpdate
+  displayName: 'Update Docs from PR Comment'
+  pool:
+    vmImage: 'ubuntu-latest'
+
+  steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.10'
+      displayName: 'Set up Python'
+
+    - checkout: self
+      persistCredentials: true
+
+    - script: |
+        echo "Loading environment variables from .env file..."
+
+        if [ -f .env ]; then
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            # Ignore comments and empty lines
+            if [[ ! "$line" =~ ^# && ! -z "$line" ]]; then
+              echo "Setting: $line"
+              echo "$line" >> $GITHUB_ENV  # Use Azure DevOps environment vars
+            fi
+          done < .env
+          echo "Environment variables loaded."
+        else
+          echo "Error: .env file not found."
+          exit 1
+        fi
+      displayName: 'Load environment variables from .env'
+
+    - script: |
+        docker compose up --build --detach
+      displayName: 'Run Docker Compose'
+
+    - script: |
+        docker exec docAider git config --global --add safe.directory /workspace
+      displayName: 'Set safe.directory in docAider container'
+
+    - script: |
+        docker exec docAider python3 /docAider/repo_documentation/update_app.py \
+        --branch "$(Build.SourceBranchName)" --file "/workspace/$(FILE_PATH)" --comment "$(COMMENT_TEXT)"
+      displayName: 'Update Documentation'
+
+    - script: |
+        git config --local user.email "max.vandewalle@inetum-realdolmen.world"
+        git config --local user.name "Max Vandewalle"
+        git add -A
+        git diff-index --quiet HEAD || (git commit -m "Update documentation for $(FILE_PATH)" && git pull --rebase)
+        git push
+      displayName: 'Commit and push changes'

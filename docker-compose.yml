@@ -1,0 +1,11 @@
+version: "latest"
+
+services:
+  docAider:
+    image: zenawang/docaider:v1
+    container_name: docAider
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    env_file:
+      - .env
