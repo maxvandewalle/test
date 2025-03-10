@@ -1,6 +1,6 @@
 
 name: Update Documentation on Pull Request Comment
-#run this shit
+
 on: 
   issue_comment:
     types: [created]
